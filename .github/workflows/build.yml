@@ -1,0 +1,230 @@
+name: HOMP Build & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/staff/**'
+      - 'apps/guest/**'
+      - 'apps/api/**'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to build (staff/guest/api/all)'
+        required: true
+        default: 'all'
+
+env:
+  FLUTTER_VERSION: '3.44.1'
+  JAVA_VERSION: '17'
+
+jobs:
+  # ─── API ───────────────────────────────────────────────────────────────────────
+  api-check:
+    name: API TypeScript Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  # ─── Staff App ─────────────────────────────────────────────────────────────────
+  build-staff:
+    name: Build Staff APK
+    runs-on: ubuntu-latest
+    needs: api-check
+    defaults:
+      run:
+        working-directory: apps/staff
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        run: flutter test test/models/ --no-pub
+
+      - name: Decode keystore
+        if: ${{ secrets.STAFF_KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "${{ secrets.STAFF_KEYSTORE_BASE64 }}" | base64 --decode > android/app/homp-staff.keystore
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.STAFF_KEY_STORE_PASSWORD }}
+          keyPassword=${{ secrets.STAFF_KEY_PASSWORD }}
+          keyAlias=${{ secrets.STAFF_KEY_ALIAS }}
+          storeFile=homp-staff.keystore
+          EOF
+
+      - name: Build APK
+        run: flutter build apk --release --dart-define=API_URL=${{ secrets.API_URL || 'https://api.yourdomain.com' }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homp-staff-apk
+          path: apps/staff/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Build AAB (for Play Store)
+        if: github.ref == 'refs/heads/main'
+        run: flutter build appbundle --release --dart-define=API_URL=${{ secrets.API_URL || 'https://api.yourdomain.com' }}
+
+      - name: Upload to Play Store internal
+        if: github.ref == 'refs/heads/main' && secrets.PLAY_STORE_JSON_KEY != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: com.homp.staff
+          releaseFiles: apps/staff/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+
+  # ─── Guest App ─────────────────────────────────────────────────────────────────
+  build-guest:
+    name: Build Guest APK
+    runs-on: ubuntu-latest
+    needs: api-check
+    defaults:
+      run:
+        working-directory: apps/guest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        run: flutter test test/models/ --no-pub
+
+      - name: Decode keystore
+        if: ${{ secrets.GUEST_KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "${{ secrets.GUEST_KEYSTORE_BASE64 }}" | base64 --decode > android/app/homp-guest.keystore
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.GUEST_KEY_STORE_PASSWORD }}
+          keyPassword=${{ secrets.GUEST_KEY_PASSWORD }}
+          keyAlias=${{ secrets.GUEST_KEY_ALIAS }}
+          storeFile=homp-guest.keystore
+          EOF
+
+      - name: Build APK
+        run: flutter build apk --release --dart-define=API_URL=${{ secrets.API_URL || 'https://api.yourdomain.com' }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: homp-guest-apk
+          path: apps/guest/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Build AAB (for Play Store)
+        if: github.ref == 'refs/heads/main'
+        run: flutter build appbundle --release --dart-define=API_URL=${{ secrets.API_URL || 'https://api.yourdomain.com' }}
+
+      - name: Upload to Play Store internal
+        if: github.ref == 'refs/heads/main' && secrets.PLAY_STORE_JSON_KEY != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: com.homp.guest
+          releaseFiles: apps/guest/build/app/outputs/bundle/release/app-release.aab
+          track: internal
+
+  # ─── Guest App iOS (TestFlight) ────────────────────────────────────────────────
+  build-guest-ios:
+    name: Build Guest IPA (TestFlight)
+    runs-on: macos-latest
+    needs: api-check
+    if: github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: apps/guest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Import signing certificate
+        if: ${{ secrets.IOS_CERT_BASE64 != '' }}
+        env:
+          IOS_CERT_BASE64: ${{ secrets.IOS_CERT_BASE64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          echo "$IOS_CERT_BASE64" | base64 --decode -o $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROFILE_BASE64" | base64 --decode -o ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign --dart-define=API_URL=${{ secrets.API_URL || 'https://api.yourdomain.com' }}
+
+      - name: Archive & export IPA
+        if: ${{ secrets.IOS_CERT_BASE64 != '' }}
+        run: |
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            archive CODE_SIGNING_ALLOWED=YES
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/Runner.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/ipa
+
+      - name: Upload IPA artifact
+        if: ${{ secrets.IOS_CERT_BASE64 != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homp-guest-ipa
+          path: ${{ runner.temp }}/ipa/*.ipa
+          retention-days: 30
+
+      - name: Upload to TestFlight
+        if: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID != '' }}
+        uses: apple-actions/upload-testflight-build@v1
+        with:
+          app-path: ${{ runner.temp }}/ipa/homp_guest.ipa
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}

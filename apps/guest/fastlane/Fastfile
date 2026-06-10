@@ -1,0 +1,63 @@
+default_platform(:android)
+
+platform :ios do
+
+  desc "Build IPA for TestFlight"
+  lane :build_ipa do
+    Dir.chdir("..") do
+      sh("flutter build ios --release --no-codesign --dart-define=API_URL=#{ENV['API_URL'] || 'https://api.yourdomain.com'}")
+    end
+    build_app(
+      workspace: "ios/Runner.xcworkspace",
+      scheme: "Runner",
+      export_method: "app-store",
+      output_directory: "build/ios/ipa",
+      output_name: "homp_guest.ipa",
+    )
+    UI.success("✅ IPA built: build/ios/ipa/homp_guest.ipa")
+  end
+
+  desc "Upload to TestFlight"
+  lane :deploy_testflight do
+    build_ipa
+    upload_to_testflight(
+      ipa: "build/ios/ipa/homp_guest.ipa",
+      api_key_path: ENV['APP_STORE_CONNECT_API_KEY_PATH'],
+      skip_waiting_for_build_processing: true,
+    )
+    UI.success("🚀 Uploaded to TestFlight!")
+  end
+
+end
+
+platform :android do
+
+  desc "Build signed release APK"
+  lane :build do
+    Dir.chdir("..") do
+      sh("flutter build apk --release --dart-define=API_URL=#{ENV['API_URL'] || 'http://10.0.0.216:3001'}")
+    end
+    UI.success("✅ APK built: build/app/outputs/flutter-apk/app-release.apk")
+  end
+
+  desc "Build AAB for Play Store"
+  lane :bundle do
+    Dir.chdir("..") do
+      sh("flutter build appbundle --release --dart-define=API_URL=#{ENV['API_URL'] || 'https://api.yourdomain.com'}")
+    end
+    UI.success("✅ AAB built: build/app/outputs/bundle/release/app-release.aab")
+  end
+
+  desc "Deploy to Play Store internal track"
+  lane :deploy_internal do
+    bundle
+    upload_to_play_store(
+      track: "internal",
+      aab: "build/app/outputs/bundle/release/app-release.aab",
+      package_name: "com.homp.guest",
+      json_key: ENV['PLAY_STORE_JSON_KEY'],
+    )
+    UI.success("🚀 Uploaded to Play Store internal track!")
+  end
+
+end

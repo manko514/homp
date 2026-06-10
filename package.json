@@ -1,0 +1,30 @@
+{
+  "name": "homp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @homp/api dev",
+    "dev:web": "pnpm --filter @homp/web dev",
+    "build:api": "pnpm --filter @homp/api build",
+    "build:web": "pnpm --filter @homp/web build",
+    "test": "pnpm --filter @homp/api test",
+    "test:cov": "pnpm --filter @homp/api test:cov",
+    "db:migrate": "pnpm --filter @homp/api prisma:migrate",
+    "db:generate": "pnpm --filter @homp/api prisma:generate",
+    "db:seed": "pnpm --filter @homp/api db:seed",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ]
+  }
+}

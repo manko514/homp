@@ -1,0 +1,39 @@
+# Requires nginx-ingress-controller (or replace annotations for your ingress class)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homp-ingress
+  namespace: homp
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # TLS via cert-manager (comment out if using a different cert manager)
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.homp.io        # replace with your domain
+        - api.homp.io
+      secretName: homp-tls
+  rules:
+    - host: app.homp.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homp-web
+                port:
+                  number: 3000
+    - host: api.homp.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: homp-api
+                port:
+                  number: 3001

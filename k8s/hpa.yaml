@@ -1,0 +1,76 @@
+# ─── HPA: API ─────────────────────────────────────────────────────────────────
+# Scales the API between 2 and 10 replicas based on CPU and memory pressure.
+# Requires metrics-server to be installed in the cluster.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: homp-api-hpa
+  namespace: homp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: homp-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60      # scale out when avg CPU > 60%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75      # scale out when avg memory > 75%
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # react quickly to spikes
+      policies:
+        - type: Pods
+          value: 3
+          periodSeconds: 60           # add up to 3 pods per minute
+    scaleDown:
+      stabilizationWindowSeconds: 300 # wait 5 min before scaling in
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60           # remove at most 1 pod per minute
+---
+# ─── HPA: Web ─────────────────────────────────────────────────────────────────
+# Next.js is mostly I/O-bound; scale on CPU to handle SSR spikes.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: homp-web-hpa
+  namespace: homp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: homp-web
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

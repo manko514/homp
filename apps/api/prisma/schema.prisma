@@ -1,0 +1,629 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Property Groups (multi-property HQ) ─────────────────────────────────────
+
+model PropertyGroup {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenants   Tenant[]
+
+  @@map("property_groups")
+}
+
+// ─── Tenants ─────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  subdomain       String   @unique
+  logoUrl         String?  @map("logo_url")
+  primaryColor    String?  @map("primary_color")
+  propertyGroupId String?  @map("property_group_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  propertyGroup        PropertyGroup?       @relation(fields: [propertyGroupId], references: [id])
+  users                User[]
+  rooms                Room[]
+  reservations         Reservation[]
+  restaurantTables     RestaurantTable[]
+  orders               Order[]
+  barSales             BarSale[]
+  tickets              Ticket[]
+  stockItems           StockItem[]
+  employees            Employee[]
+  payrollRuns          PayrollRun[]
+  aiForecasts          AiForecast[]
+  aiUsageLogs          AiUsageLog[]
+  anomalyAlerts        AnomalyAlert[]
+  purchaseOrders       PurchaseOrder[]
+  auditLogs            AuditLog[]
+  menuItems            MenuItem[]
+  drinks               Drink[]
+  loyaltyTransactions  LoyaltyTransaction[]
+  barTabs              BarTab[]
+  walletTransactions   WalletTransaction[]
+
+  @@map("tenants")
+}
+
+// ─── Users & Auth ─────────────────────────────────────────────────────────────
+
+enum Role {
+  GUEST
+  RECEPTIONIST
+  WAITER
+  BARTENDER
+  SECURITY
+  HOUSEKEEPER
+  HR_MANAGER
+  ACCOUNTANT
+  MANAGER
+  DIRECTOR
+  ADMIN
+  GROUP_GM
+  GROUP_FINANCE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  email        String
+  passwordHash String   @map("password_hash")
+  role         Role     @default(GUEST)
+  departmentId String?  @map("department_id")
+  status       String   @default("active")
+  fcmToken     String?  @map("fcm_token")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
+  reservations        Reservation[]
+  orders              Order[]              @relation("WaiterOrders")
+  barSales            BarSale[]
+  attendance          Attendance[]
+  employee            Employee?
+  auditLogs           AuditLog[]
+  guestProfile        GuestProfile?
+  loyaltyTransactions LoyaltyTransaction[]
+  barTabs             BarTab[]
+  walletTransactions  WalletTransaction[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model GuestProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  phone              String?
+  loyaltyPoints      Int      @default(0) @map("loyalty_points")
+  walletBalance      Decimal  @default(0) @db.Decimal(10, 2) @map("wallet_balance")
+  dietaryPreferences String[] @map("dietary_preferences")
+  roomPreferences    String[] @map("room_preferences")
+  communicationPrefs String[] @default([]) @map("communication_prefs")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("guest_profiles")
+}
+
+model BarTab {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  guestId   String   @map("guest_id")
+  status    String   @default("OPEN")
+  items     Json     @default("[]")
+  total     Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  guest  User   @relation(fields: [guestId], references: [id])
+
+  @@map("bar_tabs")
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  tenantId    String   @map("tenant_id")
+  points      Int
+  reason      String
+  referenceId String?  @map("reference_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("loyalty_transactions")
+}
+
+model WalletTransaction {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tenantId  String   @map("tenant_id")
+  amount    Decimal  @db.Decimal(10, 2)
+  method    String   // MTN | Airtel | M-Pesa | Card | System
+  type      String   @default("TOPUP") // TOPUP | DEBIT
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("wallet_transactions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("refresh_tokens")
+}
+
+// ─── Hotel PMS ────────────────────────────────────────────────────────────────
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  MAINTENANCE
+  OUT_OF_ORDER
+}
+
+model Room {
+  id         String     @id @default(uuid())
+  tenantId   String     @map("tenant_id")
+  roomNumber String     @map("room_number")
+  type       String
+  floor      Int
+  status     RoomStatus @default(AVAILABLE)
+  baseRate   Decimal    @map("base_rate") @db.Decimal(10, 2)
+  amenities  String[]
+  photos     String[]
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  reservations Reservation[]
+
+  @@unique([tenantId, roomNumber])
+  @@map("rooms")
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+model Reservation {
+  id            String            @id @default(uuid())
+  tenantId      String            @map("tenant_id")
+  guestId       String            @map("guest_id")
+  roomId        String            @map("room_id")
+  checkIn       DateTime          @map("check_in")
+  checkOut      DateTime          @map("check_out")
+  status        ReservationStatus @default(PENDING)
+  totalAmount   Decimal           @map("total_amount") @db.Decimal(10, 2)
+  paymentStatus PaymentStatus     @default(PENDING)
+  addOns        Json?             @map("add_ons")
+  notes         String?
+  bookingSource String?           @default("direct") @map("booking_source")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  guest  User   @relation(fields: [guestId], references: [id])
+  room   Room   @relation(fields: [roomId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, checkIn])
+  @@index([tenantId, guestId])
+  @@map("reservations")
+}
+
+// ─── Restaurant ───────────────────────────────────────────────────────────────
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+model RestaurantTable {
+  id          String      @id @default(uuid())
+  tenantId    String      @map("tenant_id")
+  tableNumber Int         @map("table_number")
+  capacity    Int
+  qrCode      String?     @map("qr_code")
+  status      TableStatus @default(AVAILABLE)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  orders Order[]
+
+  @@unique([tenantId, tableNumber])
+  @@map("restaurant_tables")
+}
+
+enum OrderStatus {
+  PENDING
+  KDS
+  READY
+  SERVED
+  BILLED
+  CANCELLED
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  tenantId      String      @map("tenant_id")
+  tableId       String?     @map("table_id")
+  waiterId      String?     @map("waiter_id")
+  guestId       String?     @map("guest_id")
+  status        OrderStatus @default(PENDING)
+  total         Decimal     @db.Decimal(10, 2)
+  isRoomService Boolean     @default(false) @map("is_room_service")
+  roomNumber    String?     @map("room_number")
+  notes         String?
+  drinkItems    Json?       @map("drink_items")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
+  table      RestaurantTable? @relation(fields: [tableId], references: [id])
+  waiter     User?        @relation("WaiterOrders", fields: [waiterId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("orders")
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String?
+  category    String
+  price       Decimal  @db.Decimal(10, 2)
+  photoUrl    String?  @map("photo_url")
+  available   Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("menu_items")
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String   @map("order_id")
+  menuItemId String   @map("menu_item_id")
+  qty        Int
+  unitPrice  Decimal  @map("unit_price") @db.Decimal(10, 2)
+  modifiers  Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@map("order_items")
+}
+
+// ─── Bar ──────────────────────────────────────────────────────────────────────
+
+model Drink {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  category    String
+  price       Decimal  @db.Decimal(10, 2)
+  photoUrl    String?  @map("photo_url")
+  available   Boolean  @default(true)
+  recipe      Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  barSales BarSale[]
+
+  @@map("drinks")
+}
+
+model BarSale {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  drinkId     String   @map("drink_id")
+  qty         Int
+  bartenderId String   @map("bartender_id")
+  total       Decimal  @db.Decimal(10, 2)
+  wasteQty    Int      @default(0) @map("waste_qty")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  drink     Drink  @relation(fields: [drinkId], references: [id])
+  bartender User   @relation(fields: [bartenderId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("bar_sales")
+}
+
+// ─── Inventory ────────────────────────────────────────────────────────────────
+
+model StockItem {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String
+  category     String
+  unit         String
+  currentQty   Decimal  @map("current_qty") @db.Decimal(10, 3)
+  reorderLevel Decimal  @map("reorder_level") @db.Decimal(10, 3)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("stock_items")
+}
+
+enum MovementType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  WASTE
+}
+
+model StockMovement {
+  id            String       @id @default(uuid())
+  stockItemId   String       @map("stock_item_id")
+  movementType  MovementType @map("movement_type")
+  qty           Decimal      @db.Decimal(10, 3)
+  referenceType String?      @map("reference_type")
+  referenceId   String?      @map("reference_id")
+  notes         String?
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ─── Ticketing ────────────────────────────────────────────────────────────────
+
+enum TicketStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+model Ticket {
+  id              String       @id @default(uuid())
+  tenantId        String       @map("tenant_id")
+  guestId         String?      @map("guest_id")
+  guestName       String?      @map("guest_name")
+  ticketType      String       @map("ticket_type")
+  qrToken         String       @unique @map("qr_token")
+  validFrom       DateTime     @map("valid_from")
+  validUntil      DateTime     @map("valid_until")
+  usedAt          DateTime?    @map("used_at")
+  status          TicketStatus @default(ACTIVE)
+  purchasePrice   Decimal      @map("purchase_price") @db.Decimal(10, 2)
+  scheduledDate   DateTime?    @map("scheduled_date")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("tickets")
+}
+
+// ─── HR & Payroll ─────────────────────────────────────────────────────────────
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+model Employee {
+  id             String         @id @default(uuid())
+  tenantId       String         @map("tenant_id")
+  userId         String         @unique @map("user_id")
+  departmentId   String?        @map("department_id")
+  employmentType EmploymentType @map("employment_type")
+  basicSalary    Decimal        @map("basic_salary") @db.Decimal(10, 2)
+  overtimeRate   Decimal        @default(0) @map("overtime_rate") @db.Decimal(10, 2)
+  hireDate       DateTime       @map("hire_date")
+  momoNumber     String?        @map("momo_number")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  attendance   Attendance[]
+  payrollItems PayrollItem[]
+
+  @@map("employees")
+}
+
+model Attendance {
+  id         String    @id @default(uuid())
+  employeeId String    @map("employee_id")
+  userId     String    @map("user_id")
+  clockIn    DateTime  @map("clock_in")
+  clockOut   DateTime? @map("clock_out")
+  latIn      Decimal?  @map("lat_in") @db.Decimal(9, 6)
+  lngIn      Decimal?  @map("lng_in") @db.Decimal(9, 6)
+  latOut     Decimal?  @map("lat_out") @db.Decimal(9, 6)
+  lngOut     Decimal?  @map("lng_out") @db.Decimal(9, 6)
+  verifiedBy String?   @map("verified_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("attendance")
+}
+
+enum PayrollStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  DISBURSED
+}
+
+model PayrollRun {
+  id          String        @id @default(uuid())
+  tenantId    String        @map("tenant_id")
+  periodStart DateTime      @map("period_start")
+  periodEnd   DateTime      @map("period_end")
+  status        PayrollStatus @default(DRAFT)
+  approvedBy    String?       @map("approved_by")
+  approvedTwoBy String?       @map("approved_two_by")
+  disbursedAt   DateTime?     @map("disbursed_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  payrollItems PayrollItem[]
+
+  @@map("payroll_runs")
+}
+
+model PayrollItem {
+  id           String   @id @default(uuid())
+  payrollRunId String   @map("payroll_run_id")
+  employeeId   String   @map("employee_id")
+  basic        Decimal  @db.Decimal(10, 2)
+  overtime     Decimal  @default(0) @db.Decimal(10, 2)
+  deductions   Decimal  @default(0) @db.Decimal(10, 2)
+  net          Decimal  @db.Decimal(10, 2)
+  txId         String?  @map("tx_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@map("payroll_items")
+}
+
+// ─── AI & Audit ───────────────────────────────────────────────────────────────
+
+model AiForecast {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  forecastDate DateTime @map("forecast_date")
+  forecastType String   @map("forecast_type")
+  dataJson     Json     @map("data_json")
+  confidence   Decimal  @db.Decimal(3, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("ai_forecasts")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  actorId      String   @map("actor_id")
+  eventType    String   @map("event_type")
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  diffJson     Json?    @map("diff_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  actor  User   @relation(fields: [actorId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, eventType])
+  @@index([tenantId, resourceType])
+  @@map("audit_logs")
+}
+
+model AiUsageLog {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  userId       String?  @map("user_id")
+  feature      String   // "chat", "forecast", "fraud", "inventory"
+  model        String   // "claude-sonnet-4-5" etc
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  costUsd      Decimal  @map("cost_usd") @db.Decimal(10, 6)
+  durationMs   Int      @map("duration_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("ai_usage_logs")
+}
+
+model AnomalyAlert {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  shiftDate    DateTime @map("shift_date")
+  severity     String   // LOW | MEDIUM | HIGH | CRITICAL
+  category     String   // bar | restaurant | hotel | inventory
+  title        String
+  description  String
+  dataJson     Json     @map("data_json")
+  resolved     Boolean  @default(false)
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, resolved])
+  @@index([tenantId, createdAt])
+  @@map("anomaly_alerts")
+}
+
+model PurchaseOrder {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  stockItemId String   @map("stock_item_id")
+  itemName    String   @map("item_name")
+  currentQty  Decimal  @map("current_qty") @db.Decimal(10, 3)
+  reorderQty  Decimal  @map("reorder_qty") @db.Decimal(10, 3)
+  unit        String
+  reason      String
+  status      String   @default("PENDING")
+  aiGenerated Boolean  @default(true) @map("ai_generated")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  stockItem StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@map("purchase_orders")
+}
