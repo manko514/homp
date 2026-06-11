@@ -13,7 +13,7 @@ RUN pnpm install --frozen-lockfile --filter=web...
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
-ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_API_URL=https://homp-production.up.railway.app
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 RUN pnpm --filter=web run build
