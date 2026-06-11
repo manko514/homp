@@ -234,7 +234,7 @@ export default function ForecastPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={4} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
-                    <Tooltip formatter={(v: number) => [`$${v.toFixed(2)}`, 'Revenue']} />
+                    <Tooltip formatter={(v: any) => [`$${Number(v).toFixed(2)}`, 'Revenue']} />
                     <Legend />
                     <Line
                       type="monotone"

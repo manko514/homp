@@ -184,7 +184,7 @@ export default function AnalyticsPage() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" tickFormatter={(v) => `$${v.toLocaleString()}`} tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
-                    <Tooltip formatter={(v: number) => [`$${fmt(v)}`, '']} />
+                    <Tooltip formatter={(v: any) => [`$${fmt(Number(v))}`, '']} />
                     <Legend />
                     <Bar dataKey="hotel" name="Hotel" stackId="a" fill="#1E2A3A" />
                     <Bar dataKey="fnb" name="F&B" stackId="a" fill="#4CAF50" />
@@ -243,13 +243,13 @@ export default function AnalyticsPage() {
                         cx="50%"
                         cy="50%"
                         outerRadius={100}
-                        label={({ channel, share }) => `${channel}: ${share}%`}
+                        label={({ channel, share }: any) => `${channel}: ${share}%`}
                       >
                         {channels.map((_, i) => (
                           <Cell key={i} fill={CHANNEL_COLORS[i % CHANNEL_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(v: number) => [`${v}%`, 'Share']} />
+                      <Tooltip formatter={(v: any) => [`${v}%`, 'Share']} />
                     </PieChart>
                   </ResponsiveContainer>
                 )}
