@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g pnpm
 
 # Copy workspace manifests first for layer-cache efficiency
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
@@ -26,7 +26,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g pnpm
 
 # Copy workspace manifests
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
