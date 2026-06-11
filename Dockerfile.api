@@ -1,0 +1,36 @@
+# ─── Stage 1: builder ──────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+RUN npm install -g pnpm@9
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY apps/api/package.json ./apps/api/
+
+RUN pnpm install --frozen-lockfile --filter=api...
+
+COPY apps/api ./apps/api
+RUN pnpm --filter=api run build
+COPY apps/api/prisma ./apps/api/prisma
+RUN pnpm --filter=api exec prisma generate
+
+# ─── Stage 2: runner ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN npm install -g pnpm@9
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY apps/api/package.json ./apps/api/
+
+RUN pnpm install --frozen-lockfile --filter=api... --prod
+
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
+
+EXPOSE 3001
+
+CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/main"]
