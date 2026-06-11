@@ -10,9 +10,8 @@ COPY apps/api/package.json ./apps/api/
 RUN pnpm install --frozen-lockfile --filter=api...
 
 COPY apps/api ./apps/api
-RUN pnpm --filter=api run build
-COPY apps/api/prisma ./apps/api/prisma
 RUN pnpm --filter=api exec prisma generate
+RUN pnpm --filter=api run build
 
 # ─── Stage 2: runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
