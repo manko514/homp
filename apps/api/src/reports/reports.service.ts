@@ -85,7 +85,7 @@ export class ReportsService {
   // ─── Weekly Revenue (last N days) ────────────────────────────────────────────
 
   async getWeeklyRevenue(tenantId: string, days = 7) {
-    const results = [];
+    const results: DailyRevenueResult[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);

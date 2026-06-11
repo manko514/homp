@@ -16,7 +16,7 @@ import IoRedis from 'ioredis';
             // ioredis accepts a connection URL string in its constructor
             const client = new IoRedis(redisUrl, { lazyConnect: true, enableOfflineQueue: false });
             await client.connect();
-            return { store: await redisStore(client) };
+            return { store: await redisStore({ client } as any) };
           } catch {
             // Redis unavailable — fall through to in-memory
           }
