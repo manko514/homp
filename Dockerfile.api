@@ -19,17 +19,14 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN npm install -g pnpm@9
-
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY apps/api/package.json ./apps/api/
-
-RUN pnpm install --frozen-lockfile --filter=api... --prod
-
+# Copy everything from builder — includes prisma CLI and all deps
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
-COPY --from=builder /app/node_modules/.pnpm ./node_modules/.pnpm
+COPY pnpm-workspace.yaml package.json ./
+COPY apps/api/package.json ./apps/api/
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/main"]
+CMD ["sh", "-c", "cd apps/api && node_modules/.bin/prisma migrate deploy && node dist/main"]
